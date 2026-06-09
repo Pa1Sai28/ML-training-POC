@@ -1,0 +1,2 @@
+torch>=2.2.0
+matplotlib>=3.7.0   # used in module 03 for loss curve plots
