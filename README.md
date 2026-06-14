@@ -54,8 +54,11 @@ That's it. No CUDA drivers, no cloud account, no expensive setup.
 ## Notes
 
 - [WHAT_I_LEARNED.md](notes/WHAT_I_LEARNED.md) — running notes, surprises, things that broke
-- [INTERVIEW_PREP.md](notes/INTERVIEW_PREP.md) — questions I'm using to test my own understanding
-
+- [notes/FINDINGS.md](notes/FINDINGS.md) — consolidated table of every
+  experiment, hypothesis, and actual result
+- [notes/WHAT_I_LEARNED.md](notes/WHAT_I_LEARNED.md) — narrative running
+  notes, surprises, and question-driven log for each module
+- [BUGS.md](BUGS.md) — real issues encountered and how they were debugged
 ---
 
 *Built while preparing for ML systems engineering roles. Learning in public.*

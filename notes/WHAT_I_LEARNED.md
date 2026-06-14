@@ -109,3 +109,42 @@ Questions I'm going into it with:
   about BF16 on CPU in Module 03?
 - How do profiler outputs translate to identifying bottlenecks on real
   accelerators like Trainium?
+
+---
+## Module 04 — Profiling
+
+**Going in, I asked myself these questions — here's what I found:**
+
+**"What does a PyTorch profiler trace actually show — time per operation, or something else?"**
+Both. `key_averages().table()` gives an aggregated summary (time, memory,call count) per operation name across all profiled steps. The Chrome trace JSON gives a literal timeline — when each operation started/ended, viewable visually in chrome://tracing or perfetto.dev. `record_function()` lets you add custom labels (like "forward", "backward", "data_loading") that group the underlying PyTorch ops in the summary.
+
+**"Where does the time actually go in a training step — is it the matmuls, the data loading, or something else entirely?"**
+Data loading was negligible (didn't even appear in the top 15 — the Shakespeare dataset is tiny and already in memory). Forward + backward
+combined were ~96% of total time, as expected. But the real surprise was*within* the forward pass: dropout's random number generation
+(`aten::bernoulli_`) was 26% of total time — almost as much as matmul itself.
+
+**"Will profiling reveal anything surprising given what we already found about BF16 on CPU in Module 03?"**
+Yes, though a different kind of surprise. Module 03 showed precision/hardware mismatches; Module 04 showed that "obvious" bottlenecks (matmul) and "invisible" ones (RNG for dropout) can be much closer in cost than architecture alone would suggest — especially at small model scale.
+
+**"How do profiler outputs translate to identifying bottlenecks on real accelerators like Trainium?"**
+The methodology is identical — wrap representative steps, look at where time concentrates, then dig into *why*. What's different is the operations that show up: on Trainium, I'd expect to see compute-engine utilization, data transfer between host and device, and collective communication (for distributed setups) as candidates, rather than CPU-only RNG quirks.
+The skill that transfers is reading the table and asking "does this percentage make sense, or is something unexpectedly expensive?"
+
+**The dropout finding, confirmed with an ablation:**
+Running the same model with `dropout=0.0` cut total profiled CPU time by 30.6% (2.366s → 1.642s) and removed `aten::bernoulli_`/`aten::dropout`
+entirely from the top 15. Matmul's absolute time barely changed — it just became a larger percentage of a smaller total. This is a textbook example of "percentage of total" being relative — always check absolute numbers too.
+
+**Warmup steps matter:**
+The first few training steps include one-time costs (memory allocation, lazy initialization) that would skew a profile if included. Running 10
+unprofiled warmup steps before profiling gave a cleaner "steady state" view.
+
+---
+## All four modules — summary reflection
+
+Looking back across Modules 01-04:
+- **01** taught me the training loop is the foundation — everything else is this loop, instrumented or distributed.
+- **02** taught me that distributed training's "ideal Nx speedup" is reduced by real communication and contention overhead (got ~1.2x with 2 processes,not 2x).
+- **03** taught me that a dtype's theoretical properties (BF16's smaller size) don't translate to speed without matching hardware support — BF16 was 16x *slower* on CPU.
+- **04** taught me that profiling finds costs that architectural reasoning misses entirely — dropout's RNG rivaled matmul at this scale.
+
+The common thread: **measure, don't assume**. Every module that started with an intuition ("DDP should ~2x", "BF16 should be faster", "matmul should dominate") was at least partially wrong until I ran the actual numbers.That's the habit I want to carry into working with Trainium — the hardware and workload combination determines the answer, not general rules of thumb.
