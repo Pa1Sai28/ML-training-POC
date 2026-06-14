@@ -30,4 +30,9 @@ set before training ensures reproducible runs across devices.
 > Control for randomness before assuming a hardware bug.
 
 ---
+
+
+<!-- Module 02 (Multiprocess DDP): no bugs encountered. Clean run on first attempt. -->
+
+
 <!-- Future bugs will be added here as modules progress -->

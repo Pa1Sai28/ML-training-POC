@@ -53,3 +53,66 @@ Questions I'm going into it with:
 - If both processes start with the same random seed, are the models always in sync?
 
 ---
+
+---
+## Module 02 — Multiprocess DDP
+
+**Going in, I asked myself these questions — here's what I found:**
+
+**"What does `dist.init_process_group()` actually set up?"**
+It's a rendezvous step. Every process dials into the same MASTER_ADDR/PORT,
+and once all `world_size` processes have checked in, the library builds
+direct communication channels between every pair of processes. After this
+call returns, processes can send/receive tensors to each other (via
+collective operations like AllReduce) without any of this setup code
+running again.
+
+**"How does `DistributedSampler` know which indices to give to which rank?"**
+It's pure arithmetic, no communication needed. Given `num_replicas` (world_size)
+and `rank`, it deterministically computes "every Nth index starting at rank"
+(after shuffling with a shared seed). Rank 0 and rank 1 never talk to each
+other to divide up the data — they each independently compute their own
+non-overlapping slice from the same formula and the same seed.
+
+**"What happens at the hardware level during `all_reduce`?"**
+On CPU with the `gloo` backend: each process's gradient tensors get sent
+over local sockets to the other process(es), summed (or averaged), and the
+result sent back — so every process ends up holding the same averaged
+gradient tensor. On GPU/Trainium with NCCL or Neuron's collectives, this
+happens over much faster physical interconnects (NVLink, chip-to-chip),
+which is why interconnect speed directly determines how close you get to
+"ideal" Nx scaling.
+
+**"If both processes start with the same random seed, are the models always
+in sync?"**
+Yes — but it's not automatic from the seed alone. The seed has to be set
+*before* model construction on every process, so every process builds
+identical initial weights. DDP then also broadcasts rank 0's weights to
+everyone at wrap time as a safety net. From there, identical weights +
+identical (averaged) gradients on every step = the optimizer step produces
+identical weights everywhere, forever. No further syncing needed.
+
+**The throughput surprise:**
+I expected world_size=2 to roughly double throughput vs world_size=1.
+Instead: 1 process → ~38,800 tok/s total. 2 processes → ~46,800 tok/s total
+(~1.2x). The AllReduce communication overhead and CPU core contention on
+the M2 Air eat most of the theoretical 2x gain. This is a real lesson in
+why distributed training efficiency depends heavily on interconnect speed —
+the same reason AWS Trainium chips have dedicated chip-to-chip interconnect
+rather than relying on general networking.
+
+**Logging discipline:**
+Every `print()` and metrics-save needed an `if rank == 0:` guard. Forgetting
+this means N processes all print the same thing — easy to miss in a 2-process
+test, immediately obvious (and annoying) at higher world_size.
+
+---
+## Module 03 — Coming next
+
+Questions I'm going into it with:
+- What's the actual numerical difference between FP32 and BF16 — what gets
+  truncated?
+- Does BF16 affect the *loss values themselves*, or just memory/speed?
+- Are there operations that MUST stay in FP32 even during "mixed precision"
+  training, and why?
+- Will I see the same 2-2.5x speedup pattern I saw with MPS in Module 01?
