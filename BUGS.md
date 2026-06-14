@@ -35,4 +35,6 @@ set before training ensures reproducible runs across devices.
 <!-- Module 02 (Multiprocess DDP): no bugs encountered. Clean run on first attempt. -->
 
 
+<!-- Module 03 (Mixed Precision): no bugs — BF16 ran correctly, just much slower on CPU (see WHAT_I_LEARNED.md for why). -->
 <!-- Future bugs will be added here as modules progress -->
+

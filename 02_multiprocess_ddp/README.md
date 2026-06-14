@@ -3,17 +3,12 @@
 ## Question this module answers
 **"What changes when training is split across multiple processes?"**
 
-This module extends `01_single_gpu_baseline/train.py` with PyTorch's
-`DistributedDataParallel` (DDP). Instead of one process training on the
-full dataset, N processes each train on a different slice of the data,
-and gradients are synchronized (averaged) after every backward pass so
+This module extends `01_single_gpu_baseline/train.py` with PyTorch's `DistributedDataParallel` (DDP). Instead of one process training on the
+full dataset, N processes each train on a different slice of the data, and gradients are synchronized (averaged) after every backward pass so
 all copies of the model stay identical.
 
-On an M2 MacBook Air there's no multi-GPU setup, so this simulates DDP
-using multiple **CPU processes** with the `gloo` backend. The mechanics
-— process groups, gradient AllReduce, distributed samplers — are
-identical to what happens across multiple GPUs or AWS Trainium chips.
-Only the communication backend changes.
+On an M2 MacBook Air there's no multi-GPU setup, so this simulates DDP using multiple **CPU processes** with the `gloo` backend. The mechanics
+— process groups, gradient AllReduce, distributed samplers — are identical to what happens across multiple GPUs or AWS Trainium chips.Only the communication backend changes.
 
 ## What's new vs Module 01
 
@@ -47,16 +42,11 @@ python 02_multiprocess_ddp/train_ddp.py --world_size 1 --steps 200   # baseline 
 
 Two reasons, both real-world distributed training lessons:
 
-1. **Communication overhead** — every step now includes a gradient
-   AllReduce across processes, which didn't exist in the single-process case.
-2. **Core contention** — the M2 Air has a limited number of CPU cores.
-   Two processes competing for the same cores means each one individually
+1. **Communication overhead** — every step now includes a gradient AllReduce across processes, which didn't exist in the single-process case.
+2. **Core contention** — the M2 Air has a limited number of CPU cores.Two processes competing for the same cores means each one individually
    runs slower than it would alone.
 
-This is exactly why, in real distributed training, the interconnect speed
-between devices (NVLink for GPUs, or chip-to-chip interconnect for AWS
-Trainium/Neuron) matters so much — it determines how much of that "ideal
-Nx speedup" you actually get to keep.
+This is exactly why, in real distributed training, the interconnect speed between devices (NVLink for GPUs, or chip-to-chip interconnect for AWS Trainium/Neuron) matters so much — it determines how much of that "ideal Nx speedup" you actually get to keep.
 
 ## Key files
 
@@ -66,9 +56,4 @@ Nx speedup" you actually get to keep.
 
 ## Key takeaway
 
-DDP's core promise is **identical models, different data**. Every process
-starts with the same weights (same seed before model construction), sees a
-different slice of data, computes its own gradients, and then those
-gradients are averaged across all processes before the optimizer step. The
-result: every process ends the step with identical updated weights — no
-explicit weight-syncing required after the initial broadcast.
+DDP's core promise is **identical models, different data**. Every process starts with the same weights (same seed before model construction), sees a different slice of data, computes its own gradients, and then those gradients are averaged across all processes before the optimizer step. The result: every process ends the step with identical updated weights — no explicit weight-syncing required after the initial broadcast.
